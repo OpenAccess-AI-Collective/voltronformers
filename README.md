@@ -9,7 +9,7 @@ Assembling the best SotA AI techniques into a unified model
 
 https://twitter.com/winglian/status/1778675583817326842
 
-References
+# References
 
 ## BitNet
 BitNet: Scaling 1-bit Transformers for Large Language Models
@@ -61,6 +61,7 @@ Branch-Train-MiX: Mixing Expert LLMs into a Mixture-of-Experts LLM
 - arXiv: https://arxiv.org/abs/2403.07816
 - reference implementations:
   - https://github.com/lucidrains/mixture-of-attention
+  - https://github.com/yikangshen/MoA
   - JetMoE: https://arxiv.org/pdf/2404.07413.pdf
 - errata:
   - https://twitter.com/Yikang_Shen/status/1777029389638647950 
