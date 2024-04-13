@@ -111,7 +111,7 @@ class TransformerDecoderBlock(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.attn = BitMGQA(config.hidden_size, config.num_attention_heads, config.num_key_value_heads, max_position_embeddings=config.max_position_embeddings, rope_theta=config.rope_theta)
+        self.attn = LlamaBitMGQA(config.hidden_size, config.num_attention_heads, config.num_key_value_heads, max_position_embeddings=config.max_position_embeddings, rope_theta=config.rope_theta)
         self.mlp = mlp(config.hidden_size, config.intermediate_size)
         self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
