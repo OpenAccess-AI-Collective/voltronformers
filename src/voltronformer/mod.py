@@ -14,7 +14,7 @@ class MoDBlock(nn.Module):
         self.capacity_factor = config.mod_capacity_factor
         self.top_k =int(self.capacity_factor * config.max_position_embeddings)
 
-    def forward(self, x, **kwargs):
+    def forward(self, x, position_ids, **kwargs):
         # [batch_size, sequence_length, n_embd]
         B, T, C = x.shape
         # inference time optimization: sequence length can
@@ -37,7 +37,7 @@ class MoDBlock(nn.Module):
         indices_expanded = selected_tokens.expand(-1, -1, C)
         # [batch_size, top_k, n_embd]
         top_k_tokens = torch.gather(x, 1, indices_expanded)
-        top_k_tokens_processed = self.block(top_k_tokens, **kwargs)
+        top_k_tokens_processed = self.block(top_k_tokens, position_ids, **kwargs)
 
         """STEP 3: combine results"""
         x = torch.scatter_add(
