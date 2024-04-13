@@ -141,13 +141,13 @@ def main():
 
     ds, text_field = get_ds()
     args = TrainingArguments(
-        gradient_accumulation_steps=1,
+        gradient_accumulation_steps=16,
         max_steps_per_epoch=None,
         log_steps=1,
         output_dir="./out",
         weight_decay=0.0,
         warmup_steps=1000,
-        per_gpu_train_batch_size=1,
+        per_gpu_train_batch_size=8,
         save_steps=10000,
         max_sequence_length=config.max_position_embeddings,
         learning_rate=5e-5,
