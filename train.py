@@ -87,53 +87,50 @@ class Trainer:
 
     def train_loop(self):
         for idx, batch in enumerate(pbar := tqdm(self.dataloader, disable=not (self.rank == 0))):
-            if (
-                    self.args.max_steps_per_epoch is not None
-                    and (idx // self.args.gradient_accumulation_steps)
-                    == self.args.max_steps_per_epoch
-            ):
-                break
+            # if (
+            #         self.args.max_steps_per_epoch is not None
+            #         and (idx // self.args.gradient_accumulation_steps)
+            #         == self.args.max_steps_per_epoch
+            # ):
+            #     break
 
-            input_ids = batch["input_ids"].to(self.device)
-            if "labels" in batch.keys():
-                labels = batch["labels"].to(self.device)
-            else:
-                labels = input_ids.clone()
+            with self.accelerator.accumulate(self._model):
+                input_ids = batch["input_ids"].to(self.device)
+                if "labels" in batch.keys():
+                    labels = batch["labels"].to(self.device)
+                else:
+                    labels = input_ids.clone()
 
-            logits = self._model(input_ids)
+                logits = self._model(input_ids)
 
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            shift_logits = shift_logits.view(-1, self.args.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
+                # Shift so that tokens < n predict n
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                shift_logits = shift_logits.view(-1, self.args.vocab_size)
+                shift_labels = shift_labels.view(-1)
+                # Enable model parallelism
+                shift_labels = shift_labels.to(shift_logits.device)
 
-            # logits = logits.transpose(1, 2)
+                # Compute loss
+                loss = self._loss_fn(shift_logits, shift_labels)
 
-            # Compute loss
-            loss = self._loss_fn(shift_logits, shift_labels)
+                if (
+                    self.global_step % self.args.log_steps == 0
+                    and self.rank == 0
+                ):
+                    pbar.set_description(f"Loss: {loss.item()}")
+                    wandb.log({"loss": loss.item(), "global_step": self.global_step})
 
-            if (
-                self.global_step % self.args.log_steps == 0
-                and self.rank == 0
-            ):
-                pbar.set_description(f"Loss: {loss.item()}")
-                wandb.log({"loss": loss.item(), "global_step": self.global_step})
-
-            loss = loss / self.args.gradient_accumulation_steps
-            loss.backward()
-
-            if (idx + 1) % self.args.gradient_accumulation_steps == 0:
+                self.accelerator.backward(loss)
                 self.optimizer.step()
+                self._model.zero_grad()
                 if self.lr_scheduler:
                     self.lr_scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
                 self.global_step += 1
 
-            if self.global_step % self.args.save_steps == 0:
-                self.save_checkpoint()
+                if self.global_step % self.args.save_steps == 0:
+                    self.save_checkpoint()
 
 
 def get_ds():
@@ -196,7 +193,7 @@ def main():
         # https://discuss.huggingface.co/t/how-to-use-huggingface-trainer-streaming-datasets-without-wrapping-it-with-torchdatas-iterablewrapper/25230
         train_dataset = train_dataset.with_format("torch")
 
-    accelerator = Accelerator()
+    accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
 
     dataloader_params = dict(
         batch_size=args.per_gpu_train_batch_size,
