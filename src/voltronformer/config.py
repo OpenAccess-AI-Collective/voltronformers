@@ -1,5 +1,7 @@
+from axolotl.utils.dict import DictDefault
+
 def tiny():
-    return {
+    return DictDefault({
         "hidden_size": 1024,
         "intermediate_size": 2816,
         "max_position_embeddings": 4096,
@@ -12,15 +14,15 @@ def tiny():
         "pad_token_id": 100277, # dbrx <{|pad|}>
         "mod_every": 2,
         "mod_capacity_factor": 0.125,
-    }
+    })
 
 
 def medium():
-    return {
+    return DictDefault({
         "hidden_size": 1024,
         "intermediate_size": 2816,
 
         "max_position_embeddings": 32768,
 
         "vocab_size": 100352
-    }
+    })

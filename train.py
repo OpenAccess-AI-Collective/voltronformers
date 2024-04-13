@@ -123,10 +123,21 @@ class Trainer:
                 self.save_checkpoint()
 
 
+def get_ds():
+    return load_dataset("togethercomputer/RedPajama-Data-V2",
+                name="default",
+                partition="head_middle",
+                snapshots=["2023-14"],
+                languages=["en"],
+                split="train",
+                streaming=True,
+            )
+    # load_dataset("cerebras/SlimPajama-627B", split="train", streaming=True)
+
 def main():
     state = PartialState()
 
-    ds = load_dataset("cerebras/SlimPajama-627B", split="train", streaming=True)
+    ds = get_ds()
     args = TrainingArguments(
         gradient_accumulation_steps=1,
         max_steps_per_epoch=None,
