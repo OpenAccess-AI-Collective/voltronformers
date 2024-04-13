@@ -132,13 +132,13 @@ def get_ds():
                 languages=["en"],
                 split="train",
                 streaming=True,
-            )
+            ), "raw_content"
     # load_dataset("cerebras/SlimPajama-627B", split="train", streaming=True)
 
 def main():
     state = PartialState()
 
-    ds = get_ds()
+    ds, text_field = get_ds()
     args = TrainingArguments(
         gradient_accumulation_steps=1,
         max_steps_per_epoch=None,
@@ -155,15 +155,15 @@ def main():
     model = CausalLM(config)
     tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-base")
 
-    def tokenize_function(examples, tokenizer=None):
-        outputs = tokenizer(examples["text"], truncation=True, max_length=None)
+    def tokenize_function(examples, field="text", tokenizer=None):
+        outputs = tokenizer(examples[field], truncation=True, max_length=None)
         return outputs
 
     with state.main_process_first():
         ds_wrapper_partial = functools.partial(
             tokenize_function,
             tokenizer=tokenizer,
-            remove_columns=["text", "meta"],
+            field=text_field,
         )
 
         train_dataset = wrap_pretraining_dataset(
@@ -190,7 +190,7 @@ def main():
     dataloader = DataLoader(train_dataset, **dataloader_params)
 
     trainer = Trainer(model, args, dataloader, accelerator)
-    print("Total number of parameters: ", trainer.model_num_parameters)
+    print(f"Total number of parameters: {trainer.model_num_parameters:_}")
     trainer.train_loop(dataloader, rank=0)
 
 
