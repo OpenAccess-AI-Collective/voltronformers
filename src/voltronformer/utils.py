@@ -4,6 +4,7 @@ from typing import Optional, Set, Type
 
 import torch
 
+from addict import Dict
 from torch import nn
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     apply_activation_checkpointing,
@@ -57,3 +58,15 @@ def get_cosine_schedule_with_min_lr_lambda(
     )
     scaling = 0.5 * (1.0 + math.cos(math.pi * progress))
     return (1 - min_lr_ratio) * scaling + min_lr_ratio
+
+
+class DictDefault(Dict):
+    """
+    A Dict that returns None instead of returning empty Dict for missing keys.
+    """
+
+    def __missing__(self, key):
+        return None
+
+    def __or__(self, other):
+        return DictDefault(super().__ror__(other))
