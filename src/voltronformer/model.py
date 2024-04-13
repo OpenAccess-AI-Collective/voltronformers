@@ -58,9 +58,9 @@ def mlp(dim: int, hidden_dim: int) -> FeedForward:
 
 class LlamaBitMGQA(BitMGQA):
     def __init__(self, embed_dim, query_heads, *args, max_position_embeddings=2048, rope_theta=10_000, **kwargs):
+        super().__init__(embed_dim, query_heads, *args, **kwargs)
         self.head_dim = embed_dim // query_heads
         self.rotary_emb = LlamaRotaryEmbedding(self.head_dim, max_position_embeddings=max_position_embeddings, base=rope_theta)
-        super().__init__(embed_dim, query_heads, *args, **kwargs)
 
     def forward(
             self,
