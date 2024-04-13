@@ -30,6 +30,7 @@ class TrainingArguments:
     per_gpu_train_batch_size: Optional[int] = 1
     save_steps: Optional[int] = 5_000
     max_sequence_length: Optional[int] = 8192
+    learning_rate: float = 5e-5
 
 class Trainer:
     def __init__(self, model, args, dataloader, accelerator):
@@ -54,7 +55,7 @@ class Trainer:
         return all_param
 
     def build_optimizer_and_scheduler(self):
-        self.optimizer = AdamWScheduleFree(self._model.parameters(), lr=self.args.learning, weight_decay=self.args.weight_decay, warmup_steps=self.args.weight_decay)
+        self.optimizer = AdamWScheduleFree(self._model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay, warmup_steps=self.args.weight_decay)
         self.lr_scheduler = None
 
     def _loss_fn(self, logits, labels):
@@ -179,7 +180,7 @@ def main():
     accelerator = Accelerator()
 
     dataloader_params = dict(
-        sampler=RandomSampler(train_dataset),
+        sampler=None,
         batch_size=args.per_gpu_train_batch_size,
         num_workers=8,
         pin_memory=True,
