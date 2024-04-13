@@ -44,6 +44,15 @@ class Trainer:
         wandb.init()
         self.accelerator = accelerator
 
+    @property
+    def model_num_parameters(self):
+        all_param = 0
+        for _, param in self._model.named_parameters():
+            num_params = param.numel()
+            all_param += num_params
+
+        return all_param
+
     def build_optimizer_and_scheduler(self):
         self.optimizer = AdamWScheduleFree(self._model.parameters(), lr=self.args.learning, weight_decay=self.args.weight_decay, warmup_steps=self.args.weight_decay)
         self.lr_scheduler = None
@@ -60,12 +69,13 @@ class Trainer:
             os.path.join(output_dir, f"model_{self.global_step}.pt"),
         )
 
-    def train(self):
+    def train(self, dataloader, rank):
         self._model.train()
         try:
             self.optimizer.train()
         except:
             pass
+        self.train_loop(dataloader, rank)
 
     def train_loop(self, dataloader, rank):
         for idx, batch in enumerate(pbar := tqdm(dataloader, disable=not (rank == 0))):
@@ -128,7 +138,6 @@ def main():
 
     config = tiny()
     model = CausalLM(config)
-    dataloader = DataLoader(ds)
     tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-base")
 
     def tokenize_function(examples, tokenizer=None):
@@ -166,6 +175,7 @@ def main():
     dataloader = DataLoader(train_dataset, **dataloader_params)
 
     trainer = Trainer(model, args, dataloader, accelerator)
+    print("Total number of parameters: ", trainer.model_num_parameters)
     trainer.train_loop(dataloader, rank=0)
 
 if __name__ == "__main__":
