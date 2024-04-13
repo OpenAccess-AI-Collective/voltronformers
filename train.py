@@ -1,7 +1,6 @@
 import functools
 import os
 from dataclasses import dataclass
-from functools import partial
 from typing import Optional
 
 import torch
@@ -9,9 +8,9 @@ import wandb
 from accelerate import Accelerator, PartialState
 from datasets import load_dataset
 from schedulefree import AdamWScheduleFree
-from torch.utils.data import DataLoader, RandomSampler
+from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, DataCollatorForSeq2Seq
 
 from src.voltronformer.config import tiny
 from src.voltronformer.model import CausalLM
@@ -186,7 +185,7 @@ def main():
         num_workers=8,
         pin_memory=True,
         drop_last=True,
-        collate_fn=None,
+        collate_fn=DataCollatorForSeq2Seq(tokenizer=tokenizer, max_length=True),
     )
     dataloader = DataLoader(train_dataset, **dataloader_params)
 
