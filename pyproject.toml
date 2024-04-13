@@ -3,6 +3,7 @@ name = "voltronformers"
 dynamic = ["version"]
 requires-python = ">= 3.10"
 dependencies = [
+    "bitnet",
     "schedulefree",
     "bitsandbytes",
     "datasets",

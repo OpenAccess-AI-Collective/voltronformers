@@ -137,6 +137,7 @@ def get_ds():
 
 def main():
     state = PartialState()
+    config = tiny()
 
     ds, text_field = get_ds()
     args = TrainingArguments(
@@ -148,10 +149,11 @@ def main():
         warmup_steps=1000,
         per_gpu_train_batch_size=1,
         save_steps=10000,
+        max_sequence_length=config.max_position_embeddings,
+        learning_rate=5e-5,
     )
     os.makedirs(args.output_dir, exist_ok=True)
 
-    config = tiny()
     model = CausalLM(config)
     tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-base")
 
