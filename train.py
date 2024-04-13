@@ -152,14 +152,14 @@ def main():
     args = TrainingArguments(
         gradient_accumulation_steps=16,
         max_steps_per_epoch=None,
-        log_steps=1,
+        log_steps=10,
         output_dir="./out",
-        weight_decay=0.0,
+        weight_decay=0.1,
         warmup_steps=1000,
-        per_gpu_train_batch_size=8,
-        save_steps=10000,
+        per_gpu_train_batch_size=24,
+        save_steps=1000,
         max_sequence_length=config.max_position_embeddings,
-        learning_rate=5e-4,
+        learning_rate=1e-3,
         vocab_size=config.vocab_size,
     )
     os.makedirs(args.output_dir, exist_ok=True)
