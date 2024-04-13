@@ -2,6 +2,10 @@ import functools
 from typing import List, Optional, Callable, Tuple
 
 import torch
+import bitnet.bit_attention
+from .bitlinear import BitLinear
+bitnet.bit_attention.BitLinear = BitLinear
+
 from bitnet.bit_attention import scaled_dot_product_gqa, BitMGQA
 from functorch.einops import rearrange
 from torch import nn, Tensor
@@ -46,7 +50,7 @@ def apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, gate_proj: Linear, down_proj: Linear, up_proj: Linear):
+    def __init__(self, gate_proj: BitLinear, down_proj: BitLinear, up_proj: BitLinear):
         super().__init__()
         self.gate_proj = gate_proj
         self.down_proj = down_proj
@@ -54,7 +58,10 @@ class FeedForward(nn.Module):
         self.act_fn = nn.SiLU()
 
     def forward(self, x):
-        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        x = self.act_fn(self.gate_proj(x)) * self.up_proj(x)
+        # FIXME layernorm???
+        x = self.down_proj(x)
+        return x
 
 
 class Attention(nn.Module):
@@ -78,31 +85,42 @@ class RMSNorm(nn.Module):
         ).type_as(x)
         return x_normed * self.scale
 
+
 def mlp(dim: int, hidden_dim: int) -> FeedForward:
     """
     Build the MLP layer associated with the Llama model.
     """
-    gate_proj = Linear(dim, hidden_dim, bias=False)
-    down_proj = Linear(hidden_dim, dim, bias=False)
-    up_proj = Linear(dim, hidden_dim, bias=False)
+    gate_proj = BitLinear(dim, hidden_dim, bias=False)
+    down_proj = BitLinear(hidden_dim, dim, bias=False)
+    up_proj = BitLinear(dim, hidden_dim, bias=False)
     return FeedForward(gate_proj=gate_proj, down_proj=down_proj, up_proj=up_proj)
 
 
 class LlamaBitMGQA(BitMGQA):
-    def __init__(self, embed_dim, query_heads, *args, max_position_embeddings=2048, rope_theta=10_000, **kwargs):
-        super().__init__(embed_dim, query_heads, *args, **kwargs)
+    def __init__(self, embed_dim, query_heads=8, kv_heads=4, dropout=0.1, bias=True, *args, max_position_embeddings=2048, rope_theta=10_000, **kwargs):
+        super().__init__(embed_dim, query_heads, kv_heads, dropout, bias, *args, **kwargs)
         self.head_dim = embed_dim // query_heads
         self.rotary_emb = LlamaRotaryEmbedding(self.head_dim, max_position_embeddings=max_position_embeddings, base=rope_theta)
 
-    def forward(
+        # rebuild the out_proj
+        self.out_proj = BitLinear(
+            embed_dim,  # this is incorrect upstream
+            embed_dim,
+            bias=bias,  # device=device, dtype=dtype
+        )
+        self._reset_parameters()
+
+
+def forward(
             self,
             x: Tensor,
             position_ids: Optional[Tensor] = None,
             need_weights: bool = False,
             # attn_mask: Optional[Tensor] = None,
-            is_causal: bool = False,
+            is_causal: bool = True,
             average_attn_weights: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
+
         # Input shape: (b, n, d)
         q: Tensor = self.q_proj(x)
         k: Tensor = self.k_proj(x)
@@ -113,8 +131,21 @@ class LlamaBitMGQA(BitMGQA):
         k = rearrange(k, "b n (h d) -> b n h d", h=self.kv_heads)
         v = rearrange(v, "b n (h d) -> b n h d", h=self.kv_heads)
 
-        # Apply rotary embedding.
-        q, k = apply_rotary_pos_emb(q, k, *self.rotary_emb(v, position_ids))
+        # Generate rotary embeddings
+        cos, sin = self.rotary_emb(x, position_ids)
+
+        # Reshape cos and sin to match the shape of q and k
+        seq_len = q.shape[2]  # Get the sequence length from q
+        cos = cos[:, :seq_len, :].unsqueeze(1)
+        sin = sin[:, :seq_len, :].unsqueeze(1)
+
+        # Apply rotary position embeddings
+        q, k = apply_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1)
+
+        # Adjust the dimensions of q, k, and v
+        q = q.view(-1, *q.shape[-3:])
+        k = k.view(-1, *k.shape[-3:])
+        v = v.view(-1, *v.shape[-3:])
 
         # Apply attention, then fold 'h' attention heads back into 'd'.
         output, attn_weights = scaled_dot_product_gqa(
@@ -128,16 +159,11 @@ class LlamaBitMGQA(BitMGQA):
             average_attn_weights=average_attn_weights,
             force_grouped=False,
         )
-        output = rearrange(output, "b n h d -> b n (h d)")
 
-        # NOTE: This is different from 'nn.MultiheadAttention'!  We follow the MAGNETO
-        # architecture (https://arxiv.org/pdf/2210.06423.pdf), which applies an extra
-        # layer norm before the linear output projection.  The cross-attention layer in
-        # the MAGNETO decoder does not include this layer norm, so users have the
-        # option to disable it (layer_norm=False).
-        if self.layer_norm:
-            assert self.norm is not None
-            output = self.norm(output)
+        # Re-assemble all head outputs side-by-side.
+        # output = output.transpose(1, 2).contiguous().view(b, n, d)
+        output = rearrange(output, "b n h d -> b h (n d)")
+
         # Linear projection on attention outputs.
         output = self.out_proj(output)
 
@@ -148,14 +174,16 @@ class TransformerDecoderBlock(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.attn = LlamaBitMGQA(config.hidden_size, config.num_attention_heads, config.num_key_value_heads, max_position_embeddings=config.max_position_embeddings, rope_theta=config.rope_theta)
+        self.attn = LlamaBitMGQA(config.hidden_size, config.num_attention_heads, config.num_key_value_heads, max_position_embeddings=config.max_position_embeddings, rope_theta=config.rope_theta, bias=False, layer_norm=False)
         self.mlp = mlp(config.hidden_size, config.intermediate_size)
         self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(self, x, position_ids):
-        output, _ = x + self.attn(self.input_layernorm(x), position_ids=position_ids)
-        return x + self.mlp(self.post_attention_layernorm(x))
+        residual = x
+        h = self.input_layernorm(x)
+        output = residual + self.attn(h, position_ids=position_ids)[0]
+        return residual + self.mlp(self.post_attention_layernorm(output))
 
 
 class CheckpointingMixin(nn.Module):

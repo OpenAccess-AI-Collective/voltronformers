@@ -58,6 +58,10 @@ def wrap_pretraining_dataset(
     return dataset
 
 
+def drop_long_seq(sample, sequence_len=2048):
+    return len(sample["input_ids"]) <= sequence_len and len(sample["input_ids"]) > 0
+
+
 def encode_packed_pretraining(
         collate_fn,
         ds_wrapper: Callable,
@@ -75,11 +79,17 @@ def encode_packed_pretraining(
         remove_columns = list(train_dataset.features.keys())
     )
 
+    drop_long = functools.partial(drop_long_seq, sequence_len=max_seq_length)
+    train_dataset = train_dataset.filter(
+        drop_long,
+        num_proc=8,
+    )
+
     sampler = MultipackBatchSampler(
         RandomSampler(train_dataset),
-        batch_size=1,
+        batch_size=batch_size,
         drop_last=True,
-        batch_max_len=batch_size * max_seq_length,
+        batch_max_len=max_seq_length,
         lengths=get_dataset_lengths(train_dataset),
     )
 

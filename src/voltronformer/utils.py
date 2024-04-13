@@ -1,7 +1,28 @@
 import math
 import os
+from typing import Optional, Set, Type
 
 import torch
+
+from torch import nn
+from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
+    apply_activation_checkpointing,
+)
+from torch.distributed.fsdp.wrap import ModuleWrapPolicy
+
+
+def set_activation_checkpointing(
+        model: nn.Module, auto_wrap_policy: Optional[Set[Type[nn.Module]]] = None, **kwargs
+) -> None:
+    """Utility to setup activation checkpointing and wrap the model for checkpointing.
+
+    Args:
+        model (nn.Module): Model to setup activation checkpointing.
+        auto_wrap_policy (Optional[Set[nn.Module]]): Policy to wrap module.
+        **kwargs: additional arguments to pass to torch.distributed activation checkpointing.
+    """
+    wrap_policy = ModuleWrapPolicy(auto_wrap_policy or set())
+    apply_activation_checkpointing(model, auto_wrap_policy=wrap_policy, **kwargs)
 
 
 def device_get_local_rank():

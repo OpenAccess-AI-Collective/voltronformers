@@ -4,18 +4,20 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
+import torch.nn.functional as F
 import wandb
 from accelerate import Accelerator, PartialState
 from datasets import load_dataset
+from einops import rearrange
 from schedulefree import AdamWScheduleFree
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer, DataCollatorForSeq2Seq
 
 from src.voltronformer.config import tiny
-from src.voltronformer.model import CausalLM
+from src.voltronformer.model import CausalLM, TransformerDecoderBlock
 from src.voltronformer.train.data import wrap_pretraining_dataset
-from src.voltronformer.utils import device_get_cuda, device_get_local_rank, get_cosine_schedule_with_min_lr_lambda
+from src.voltronformer.utils import device_get_cuda, device_get_local_rank, set_activation_checkpointing
 
 
 @dataclass
@@ -30,11 +32,17 @@ class TrainingArguments:
     save_steps: Optional[int] = 5_000
     max_sequence_length: Optional[int] = 8192
     learning_rate: float = 5e-5
+    vocab_size: Optional[int] = None
+
 
 class Trainer:
-    def __init__(self, model, args, dataloader, accelerator):
+    def __init__(self, model, args, dataloader, accelerator, activation_checkpointing=True):
         self.args = args
         self._model = model
+        if activation_checkpointing:
+            set_activation_checkpointing(
+                model, auto_wrap_policy={TransformerDecoderBlock}
+            )
         self.build_optimizer_and_scheduler()
         self._model, self.dataloader, self.optimizer = accelerator.prepare(self._model, dataloader, self.optimizer)
 
@@ -59,7 +67,7 @@ class Trainer:
 
     def _loss_fn(self, logits, labels):
         loss_fct = torch.nn.CrossEntropyLoss()
-        loss = loss_fct(logits.view(-1, logits.shape[-1]), labels.view(-1))
+        loss = loss_fct(logits.reshape(-1, logits.shape[-1]), labels.reshape(-1))
         return loss
 
     def save_checkpoint(self):
@@ -95,12 +103,17 @@ class Trainer:
             logits = self._model(input_ids)
 
             # Shift so that tokens < n predict n
-            logits = logits[..., :-1, :].contiguous()
-            labels = labels[..., 1:].contiguous()
-            logits = logits.transpose(1, 2)
+            shift_logits = logits[..., :-1, :].contiguous()
+            shift_labels = labels[..., 1:].contiguous()
+            shift_logits = shift_logits.view(-1, self.args.vocab_size)
+            shift_labels = shift_labels.view(-1)
+            # Enable model parallelism
+            shift_labels = shift_labels.to(shift_logits.device)
+
+            # logits = logits.transpose(1, 2)
 
             # Compute loss
-            loss = self._loss_fn(logits, labels)
+            loss = self._loss_fn(shift_logits, shift_labels)
 
             if (
                 self.global_step * self.args.log_steps == 0
@@ -149,11 +162,13 @@ def main():
         per_gpu_train_batch_size=8,
         save_steps=10000,
         max_sequence_length=config.max_position_embeddings,
-        learning_rate=5e-5,
+        learning_rate=5e-4,
+        vocab_size=config.vocab_size,
     )
     os.makedirs(args.output_dir, exist_ok=True)
 
     model = CausalLM(config)
+    model = model.to(device_get_cuda())
     tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-base")
 
     def tokenize_function(examples, field="text", tokenizer=None):
@@ -189,9 +204,9 @@ def main():
     )
     dataloader = DataLoader(train_dataset, **dataloader_params)
 
-    trainer = Trainer(model, args, dataloader, accelerator)
+    trainer = Trainer(model, args, dataloader, accelerator, activation_checkpointing=False)
     print(f"Total number of parameters: {trainer.model_num_parameters:_}")
-    trainer.train_loop()
+    trainer.train()
 
 
 if __name__ == "__main__":
