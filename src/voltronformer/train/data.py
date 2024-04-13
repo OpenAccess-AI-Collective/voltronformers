@@ -9,8 +9,8 @@ from datasets import Dataset
 from torch.utils.data import RandomSampler
 
 
-def get_dataset_lengths(dataset):
-    input_ids = dataset.column("input_ids")
+def get_dataset_lengths(dataset: Dataset):
+    input_ids = dataset.data.column("input_ids")
     lengths = np.vectorize(len)(np.array(input_ids, dtype=object))
     return lengths
 
