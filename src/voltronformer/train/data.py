@@ -2,10 +2,17 @@ import functools
 from collections import defaultdict
 from typing import Callable, Dict, List, Optional
 
+import numpy as np
 from axolotl.utils.collators import PretrainingBatchSamplerDataCollatorForSeq2Seq
-from axolotl.utils.samplers import MultipackBatchSampler, get_dataset_lengths
+from axolotl.utils.samplers import MultipackBatchSampler
 from datasets import Dataset
 from torch.utils.data import RandomSampler
+
+
+def get_dataset_lengths(dataset):
+    input_ids = dataset.data.column("input_ids")
+    lengths = np.vectorize(len)(np.array(input_ids, dtype=object))
+    return lengths
 
 
 def wrap_pretraining_dataset(
@@ -29,7 +36,6 @@ def wrap_pretraining_dataset(
         ds_wrapper_fn,
         max_seq_length=max_tokens,
         batch_size=batch_size,
-        multipack_attn=False,
     )
 
     # remove all the existing columns after mapping since they end up having
@@ -58,7 +64,6 @@ def encode_packed_pretraining(
         examples: Dict[str, List],
         max_seq_length: int = 2048,
         batch_size: int = 4,
-        multipack_attn: Optional[bool] = False,
 ) -> Dict[str, List]:
     # pylint: disable=duplicate-code
     # tokenize all the examples
