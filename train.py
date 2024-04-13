@@ -70,16 +70,16 @@ class Trainer:
             os.path.join(output_dir, f"model_{self.global_step}.pt"),
         )
 
-    def train(self, dataloader, rank):
+    def train(self):
         self._model.train()
         try:
             self.optimizer.train()
         except:
             pass
-        self.train_loop(dataloader, rank)
+        self.train_loop()
 
-    def train_loop(self, dataloader, rank):
-        for idx, batch in enumerate(pbar := tqdm(dataloader, disable=not (rank == 0))):
+    def train_loop(self):
+        for idx, batch in enumerate(pbar := tqdm(self.dataloader, disable=not (self.rank == 0))):
             if (
                     self.args.max_steps_per_epoch is not None
                     and (idx // self.args.gradient_accumulation_steps)
@@ -182,7 +182,6 @@ def main():
     accelerator = Accelerator()
 
     dataloader_params = dict(
-        sampler=None,
         batch_size=args.per_gpu_train_batch_size,
         num_workers=8,
         pin_memory=True,
@@ -193,7 +192,7 @@ def main():
 
     trainer = Trainer(model, args, dataloader, accelerator)
     print(f"Total number of parameters: {trainer.model_num_parameters:_}")
-    trainer.train_loop(dataloader, rank=0)
+    trainer.train_loop()
 
 
 if __name__ == "__main__":

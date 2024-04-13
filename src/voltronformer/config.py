@@ -2,12 +2,12 @@ from axolotl.utils.dict import DictDefault
 
 def tiny():
     return DictDefault({
-        "hidden_size": 768,
-        "intermediate_size": 2112,
+        "hidden_size": 512,
+        "intermediate_size": 1408,
         "rope_theta": 10_000,
         "max_position_embeddings": 2048,
-        "num_attention_heads": 32,
-        "num_key_value_heads": 8,
+        "num_attention_heads": 16,
+        "num_key_value_heads": 4,
         "num_hidden_layers": 16,
         "vocab_size": 100352,
         "dwa_dilation": 4,
