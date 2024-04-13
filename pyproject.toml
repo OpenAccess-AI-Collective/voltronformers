@@ -1,0 +1,33 @@
+[project]
+name = "voltronformers"
+dynamic = ["version"]
+requires-python = ">= 3.10"
+dependencies = [
+    "schedulefree",
+    "bitsandbytes",
+    "datasets",
+    "einops",
+    "flash-attn",
+    "wandb",
+    "tqdm",
+    "transformers==4.49.3",
+    "torch==2.2.1",
+    "axolotl @ git+https://github.com/openaccess-ai-collective/axolotl.git@main",
+]
+maintainers = [
+    {name="Wing Lian", email="wing.lian@gmail.com"},
+]
+description = "voltronformers: Assembling the best SotA AI techniques into a unified model"
+
+[project.optional-dependencies]
+dev = [
+    "tox",
+    "pre-commit",
+    "black",
+    "mypy",
+    "pytest",
+]
+
+[build-system]
+requires = ["flit_core<4"]
+build-backend = "flit_core.buildapi"

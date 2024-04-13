@@ -1,0 +1,6 @@
+schedulefree
+wandb
+torch==2.2.1
+transformers==4.39.3
+datasets
+axolotl @ git+https://github.com/openaccess-ai-collective/axolotl.git@main
