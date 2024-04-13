@@ -169,7 +169,10 @@ def main():
 
     model = CausalLM(config)
     model = model.to(device_get_cuda())
-    tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-base")
+    # tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-base")
+    tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
+    if not tokenizer.pad_token_id:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
 
     def tokenize_function(examples, field="text", tokenizer=None):
         outputs = tokenizer(examples[field], truncation=True, max_length=None)
@@ -204,7 +207,7 @@ def main():
     )
     dataloader = DataLoader(train_dataset, **dataloader_params)
 
-    trainer = Trainer(model, args, dataloader, accelerator, activation_checkpointing=False)
+    trainer = Trainer(model, args, dataloader, accelerator, activation_checkpointing=True)
     print(f"Total number of parameters: {trainer.model_num_parameters:_}")
     trainer.train()
 

@@ -2,6 +2,7 @@ from axolotl.utils.dict import DictDefault
 
 
 def tiny():
+    """50M parameters"""
     return DictDefault({
         "hidden_size": 512,
         "intermediate_size": 1408,
