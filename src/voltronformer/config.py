@@ -8,7 +8,7 @@ def tiny():
         "max_position_embeddings": 2048,
         "num_attention_heads": 32,
         "num_key_value_heads": 8,
-        "num_hidden_layers": 24,
+        "num_hidden_layers": 16,
         "vocab_size": 100352,
         "dwa_dilation": 4,
         "dwa_period": 5,

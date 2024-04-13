@@ -68,7 +68,7 @@ def encode_packed_pretraining(
     # pylint: disable=duplicate-code
     # tokenize all the examples
     # rows get split with stride (overlap)
-    train_dataset = ds_wrapper(Dataset.from_dict(examples))[0]
+    train_dataset = Dataset.from_dict(examples).map(ds_wrapper, batched=True)
 
     sampler = MultipackBatchSampler(
         RandomSampler(train_dataset),
