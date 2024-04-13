@@ -4,11 +4,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 import torch
-import torch.nn.functional as F
 import wandb
 from accelerate import Accelerator, PartialState
 from datasets import load_dataset
-from einops import rearrange
 from schedulefree import AdamWScheduleFree
 from torch.utils.data import DataLoader
 from tqdm import tqdm

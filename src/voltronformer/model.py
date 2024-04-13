@@ -1,19 +1,15 @@
 import functools
-from typing import List, Optional, Callable, Tuple
+from typing import Optional, Callable, Tuple
 
 import torch
-import bitnet.bit_attention
-from .bitlinear import BitLinear
-bitnet.bit_attention.BitLinear = BitLinear
+from .bitlinear import BitLinear, scaled_dot_product_gqa
 
-from bitnet.bit_attention import scaled_dot_product_gqa, BitMGQA
 from functorch.einops import rearrange
 from torch import nn, Tensor
 from denseformer import DWAModules
 from torch.utils.checkpoint import checkpoint
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
-from .core import Linear
 from .mod import MoDBlock
 
 
