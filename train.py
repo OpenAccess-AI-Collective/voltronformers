@@ -136,13 +136,13 @@ class Trainer:
 
 def get_ds():
     return load_dataset("togethercomputer/RedPajama-Data-V2",
-                name="default",
-                partition="head_middle",
-                snapshots=["2023-14"],
-                languages=["en"],
-                split="train",
-                streaming=True,
-            ), "raw_content"
+                        name="default",
+                        partition="head_middle",
+                        snapshots=["2023-14"],
+                        languages=["en"],
+                        split="train",
+                        streaming=True,
+                        ), "raw_content"
     # load_dataset("cerebras/SlimPajama-627B", split="train", streaming=True)
 
 def main():
@@ -173,7 +173,7 @@ def main():
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
     def tokenize_function(examples, field="text", tokenizer=None):
-        outputs = tokenizer(examples[field], truncation=True, max_length=None)
+        outputs = tokenizer(examples[field], truncation=True, max_length=config.max_position_embeddings)
         return outputs
 
     with state.main_process_first():

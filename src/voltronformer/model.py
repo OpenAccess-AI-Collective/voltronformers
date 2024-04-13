@@ -318,7 +318,8 @@ class Transformer(CheckpointingMixin):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.dwa_modules = DWAModules(config.num_hidden_layers, config.dwa_dilation, config.dwa_period)
+        if config.dwa:
+            self.dwa_modules = DWAModules(config.num_hidden_layers, config.dwa_dilation, config.dwa_period)
         self.wte = nn.Embedding(config.vocab_size, config.hidden_size, padding_idx=config.pad_token_id)
 
         self.h = nn.ModuleList([
@@ -340,7 +341,8 @@ class Transformer(CheckpointingMixin):
         ).unsqueeze(0)
 
         hidden_states = inputs_embeds
-        self.dwa_modules.init_accumulators(hidden_states)
+        if self.config.dwa:
+            self.dwa_modules.init_accumulators(hidden_states)
         for i, decoder_layer in enumerate(self.h):
             # gradient checkpointing
             if self.gradient_checkpointing and self.training:
@@ -351,7 +353,8 @@ class Transformer(CheckpointingMixin):
                 )
             else:
                 hidden_states = decoder_layer(hidden_states, position_ids)
-            hidden_states = self.dwa_modules(hidden_states, block_idx=i)
+            if self.config.dwa:
+                hidden_states = self.dwa_modules(hidden_states, block_idx=i)
         hidden_states = self.ln_f(hidden_states)
         return hidden_states
 
