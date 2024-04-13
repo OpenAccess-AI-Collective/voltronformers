@@ -7,7 +7,7 @@ def tiny():
         "hidden_size": 512,
         "intermediate_size": 1408,
         "rope_theta": 10_000,
-        "max_position_embeddings": 2048,
+        "max_position_embeddings": 1024,
         "num_attention_heads": 16,
         "num_key_value_heads": 4,
         "num_hidden_layers": 12,
