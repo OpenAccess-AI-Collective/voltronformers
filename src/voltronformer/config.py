@@ -18,6 +18,7 @@ def tiny():
         "mod_every": 2,
         "mod_capacity_factor": 0.125,
         "rms_norm_eps": 0.000001,
+        "dwa": True,
     })
 
 
