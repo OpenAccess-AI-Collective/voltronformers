@@ -41,7 +41,7 @@ class Trainer:
         self.device = device_get_cuda()
         self.global_step = 0
         self.rank = device_get_local_rank()
-        wandb.init()
+        wandb.init(project="voltronformer")
         self.accelerator = accelerator
 
     @property
@@ -87,7 +87,10 @@ class Trainer:
                 break
 
             input_ids = batch["input_ids"].to(self.device)
-            labels = batch["labels"].to(self.device)
+            if "labels" in batch.keys():
+                labels = batch["labels"].to(self.device)
+            else:
+                labels = input_ids.clone()
 
             logits = self._model(input_ids)
 
@@ -177,6 +180,7 @@ def main():
     trainer = Trainer(model, args, dataloader, accelerator)
     print("Total number of parameters: ", trainer.model_num_parameters)
     trainer.train_loop(dataloader, rank=0)
+
 
 if __name__ == "__main__":
     main()

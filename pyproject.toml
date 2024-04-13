@@ -10,9 +10,9 @@ dependencies = [
     "flash-attn",
     "wandb",
     "tqdm",
-    "transformers==4.49.3",
-    "torch==2.2.1",
+    "transformers==4.39.3",
     "axolotl @ git+https://github.com/openaccess-ai-collective/axolotl.git@main",
+    "denseformer @ git+https://github.com/epfml/DenseFormer.git@main",
 ]
 maintainers = [
     {name="Wing Lian", email="wing.lian@gmail.com"},
@@ -27,7 +27,3 @@ dev = [
     "mypy",
     "pytest",
 ]
-
-[build-system]
-requires = ["flit_core<4"]
-build-backend = "flit_core.buildapi"
