@@ -47,7 +47,8 @@ class Trainer:
         self.device = device_get_cuda()
         self.global_step = 0
         self.rank = device_get_local_rank()
-        wandb.init(project="voltronformer")
+        if accelerator.is_main_process:
+            wandb.init(project="voltronformer")
         self.accelerator = accelerator
 
     @property
