@@ -42,6 +42,7 @@ class Trainer:
                 model, auto_wrap_policy={TransformerDecoderBlock}
             )
         self.build_optimizer_and_scheduler()
+
         self._model, self.dataloader, self.optimizer = accelerator.prepare(self._model, dataloader, self.optimizer)
 
         self.device = device_get_cuda()
@@ -115,7 +116,7 @@ class Trainer:
             loss = self._loss_fn(shift_logits, shift_labels)
 
             if (
-                self.global_step * self.args.log_steps == 0
+                self.global_step % self.args.log_steps == 0
                 and self.rank == 0
             ):
                 pbar.set_description(f"Loss: {loss.item()}")
