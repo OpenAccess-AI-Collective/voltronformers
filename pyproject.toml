@@ -11,12 +11,14 @@ dependencies = [
     "datasets",
     "einops",
     "flash-attn",
+    "mosaicml-streaming",
     "numba",
     "numpy",
     "safetensors",
     "wandb",
     "tqdm",
     "transformers==4.39.3",
+    "zstandard",
     "denseformer @ git+https://github.com/epfml/DenseFormer.git@main",
 ]
 maintainers = [

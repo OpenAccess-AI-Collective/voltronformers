@@ -15,7 +15,7 @@ from transformers import AutoTokenizer, DataCollatorForSeq2Seq
 
 from src.voltronformer.config import tiny
 from src.voltronformer.model import CausalLM, TransformerDecoderBlock
-from src.voltronformer.train.data import wrap_pretraining_dataset
+from src.voltronformer.train.data import wrap_pretraining_dataset, QueuedDataLoader
 from src.voltronformer.utils import device_get_cuda, device_get_local_rank, set_activation_checkpointing
 
 
@@ -32,6 +32,7 @@ class TrainingArguments:
     max_sequence_length: Optional[int] = 8192
     learning_rate: float = 5e-5
     vocab_size: Optional[int] = None
+    max_grad_norm: Optional[float] = 1.0
 
 
 class Trainer:
@@ -89,13 +90,6 @@ class Trainer:
 
     def train_loop(self):
         for idx, batch in enumerate(pbar := tqdm(self.dataloader, disable=not (self.rank == 0))):
-            # if (
-            #         self.args.max_steps_per_epoch is not None
-            #         and (idx // self.args.gradient_accumulation_steps)
-            #         == self.args.max_steps_per_epoch
-            # ):
-            #     break
-
             with self.accelerator.accumulate(self._model):
                 input_ids = batch["input_ids"].to(self.device)
                 if "labels" in batch.keys():
@@ -115,27 +109,33 @@ class Trainer:
 
                 # Compute loss
                 loss = self._loss_fn(shift_logits, shift_labels)
-
-                if (
-                    self.global_step % self.args.log_steps == 0
-                    and self.rank == 0
-                ):
-                    pbar.set_description(f"Loss: {loss.item()}")
-                    wandb.log({"loss": loss.item(), "global_step": self.global_step})
-
                 self.accelerator.backward(loss)
+                if self.accelerator.sync_gradients:
+                    grad_norm = self.accelerator.clip_grad_norm_(self._model.parameters(), self.args.max_grad_norm)
                 self.optimizer.step()
                 self._model.zero_grad()
                 if self.lr_scheduler:
                     self.lr_scheduler.step()
+
                 self.optimizer.zero_grad(set_to_none=True)
                 self.global_step += 1
+
+                if self.global_step % self.args.log_steps == 0:
+                    if self.rank == 0:
+                        pbar.set_description(f"Loss: {loss.item()} Global Step: {self.global_step}")
+                    grad_norm = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+                    self.accelerator.log({"training_loss": loss.item(), "gradient_norm": grad_norm}, step=self.global_step)
 
                 if self.global_step % self.args.save_steps == 0:
                     self.save_checkpoint()
 
+        self.accelerator.end_training()
 
-def get_ds():
+
+def get_redpajama_v1():
+    return load_dataset("togethercomputer/RedPajama-Data-1T", "common_crawl", split="train", streaming=True), "text"
+
+def get_redpajama_v2():
     return load_dataset("togethercomputer/RedPajama-Data-V2",
                         name="default",
                         partition="head_middle",
@@ -144,10 +144,18 @@ def get_ds():
                         split="train",
                         streaming=True,
                         ), "raw_content"
+
+def get_ds():
+    return get_redpajama_v2()
+
     # load_dataset("cerebras/SlimPajama-627B", split="train", streaming=True)
+
 
 def main():
     state = PartialState()
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
     config = tiny()
 
     ds, text_field = get_ds()
@@ -198,21 +206,21 @@ def main():
     # ddp kwargs with find_unused_parameters needed for triton rmsnorm
     # ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     accelerator = Accelerator(
-        mixed_precision="bf16",
-        log_with="wandb",
+        # mixed_precision="bf16",
+        log_with=["wandb", "tensorboard"],
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         # kwargs_handlers=[ddp_kwargs],
     )
 
     dataloader_params = dict(
         batch_size=args.per_gpu_train_batch_size,
-        num_workers=8,
+        num_workers=1,
         pin_memory=True,
-        prefetch_factor=4,
+        prefetch_factor=8,
         drop_last=True,
         collate_fn=DataCollatorForSeq2Seq(tokenizer=tokenizer, max_length=True),
     )
-    dataloader = DataLoader(train_dataset, **dataloader_params)
+    dataloader = QueuedDataLoader(train_dataset, queue_len=10_000, **dataloader_params)
 
     trainer = Trainer(model, args, dataloader, accelerator, activation_checkpointing=True)
     if state.is_main_process:

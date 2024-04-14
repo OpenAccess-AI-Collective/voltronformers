@@ -1,10 +1,12 @@
 import functools
 from collections import defaultdict
+from queue import Queue
+from threading import Thread
 from typing import Callable, Dict, List
 
 import numpy as np
 from datasets import Dataset
-from torch.utils.data import RandomSampler
+from torch.utils.data import RandomSampler, DataLoader
 
 from src.voltronformer.train.collators import PretrainingBatchSamplerDataCollatorForSeq2Seq
 from src.voltronformer.train.samplers import MultipackBatchSampler
@@ -115,3 +117,30 @@ def encode_packed_pretraining(
                 chunked_data[feature].append(collated_features[feature].squeeze(0))
 
     return chunked_data
+
+
+class QueuedDataLoader(DataLoader):
+    def __init__(self, *args, queue_len=1_000, **kwargs):
+        kwargs["persistent_workers"] = True
+        super().__init__(*args, **kwargs)
+        self.data_queue = Queue(maxsize=queue_len)
+        self.prefetch_thread = Thread(target=self.prefetch_data)
+        self.prefetch_thread.daemon = True
+        self.prefetch_thread.start()
+
+    def prefetch_data(self):
+        for data in super().__iter__():
+            self.data_queue.put(data)
+        self.data_queue.put(None)
+
+    def __iter__(self):
+        return super().__iter__()
+
+    def __next__(self):
+        if hasattr(self, 'data_queue'):
+            data = self.data_queue.get()
+            if data is None:
+                raise StopIteration
+            return data
+        else:
+            return self._iterator.__next__()
