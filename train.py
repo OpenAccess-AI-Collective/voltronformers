@@ -1,5 +1,6 @@
 import functools
 import os
+import tempfile
 from dataclasses import dataclass
 from typing import Optional
 
@@ -12,18 +13,22 @@ from schedulefree import AdamWScheduleFree
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoTokenizer, DataCollatorForSeq2Seq
+from transformers.trainer_pt_utils import distributed_concat
 
-from src.voltronformer.config import tiny
+from src.voltronformer.config import tiny, small
 from src.voltronformer.model import CausalLM, TransformerDecoderBlock
 from src.voltronformer.train.data import wrap_pretraining_dataset, QueuedDataLoader
 from src.voltronformer.utils import device_get_cuda, device_get_local_rank, set_activation_checkpointing
 
+
+state = PartialState()
 
 @dataclass
 class TrainingArguments:
     gradient_accumulation_steps: int = 1
     max_steps_per_epoch: Optional[int] = None
     log_steps: int = 1
+    adam_epsilon: Optional[float] = 1e-8
     output_dir: Optional[str] = None
     weight_decay: float = 0.0
     warmup_steps: Optional[int] = 1000
@@ -33,6 +38,7 @@ class TrainingArguments:
     learning_rate: float = 5e-5
     vocab_size: Optional[int] = None
     max_grad_norm: Optional[float] = 1.0
+    n_gpu: Optional[int] = None
 
 
 class Trainer:
@@ -64,7 +70,7 @@ class Trainer:
         return all_param
 
     def build_optimizer_and_scheduler(self):
-        self.optimizer = AdamWScheduleFree(self._model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay, warmup_steps=self.args.weight_decay)
+        self.optimizer = AdamWScheduleFree(self._model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay, warmup_steps=self.args.weight_decay, eps=self.args.adam_epsilon)
         self.lr_scheduler = None
 
     def _loss_fn(self, logits, labels):
@@ -89,7 +95,11 @@ class Trainer:
         self.train_loop()
 
     def train_loop(self):
+        tr_loss = torch.tensor(0.0).to(self.device)
+        total_batched_samples = 0
         for idx, batch in enumerate(pbar := tqdm(self.dataloader, disable=not (self.rank == 0))):
+            total_batched_samples += 1
+            is_grad_accum_step = total_batched_samples % self.args.gradient_accumulation_steps == 0
             with self.accelerator.accumulate(self._model):
                 input_ids = batch["input_ids"].to(self.device)
                 if "labels" in batch.keys():
@@ -109,25 +119,37 @@ class Trainer:
 
                 # Compute loss
                 loss = self._loss_fn(shift_logits, shift_labels)
+                if self.args.n_gpu > 1:
+                    loss = loss.mean()
                 self.accelerator.backward(loss)
-                if self.accelerator.sync_gradients:
+                mini_step_loss = loss.detach() / self.args.gradient_accumulation_steps
+                tr_loss += mini_step_loss
+
+                if is_grad_accum_step:
                     grad_norm = self.accelerator.clip_grad_norm_(self._model.parameters(), self.args.max_grad_norm)
-                self.optimizer.step()
-                self._model.zero_grad()
-                if self.lr_scheduler:
-                    self.lr_scheduler.step()
 
-                self.optimizer.zero_grad(set_to_none=True)
-                self.global_step += 1
+                    self.optimizer.step()
+                    if self.lr_scheduler:
+                        self.lr_scheduler.step()
+                    self._model.zero_grad()
 
-                if self.global_step % self.args.log_steps == 0:
-                    if self.rank == 0:
-                        pbar.set_description(f"Loss: {loss.item()} Global Step: {self.global_step}")
-                    grad_norm = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
-                    self.accelerator.log({"training_loss": loss.item(), "gradient_norm": grad_norm}, step=self.global_step)
+                    if self.accelerator.num_processes > 1:
+                        tr_loss_scalar = distributed_concat(tr_loss).mean().item()
+                    else:
+                        tr_loss_scalar = tr_loss.mean().item()
+                    tr_loss -= tr_loss
 
-                if self.global_step % self.args.save_steps == 0:
-                    self.save_checkpoint()
+                    self.global_step += 1
+
+                    if self.global_step % self.args.log_steps == 0:
+                        grad_norm = grad_norm.detach().item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+                        if self.rank == 0:
+                            pbar.set_description(f"Loss: {tr_loss_scalar} Global Step: {self.global_step} gradient_norm: {grad_norm}")
+                            print(f"Loss: {tr_loss_scalar} Global Step: {self.global_step} gradient_norm: {grad_norm}")
+                            wandb.log({"training_loss": tr_loss_scalar, "gradient_norm": grad_norm, "global_step": self.global_step}, step=self.global_step)
+                        self.accelerator.log({"training_loss": tr_loss_scalar, "gradient_norm": grad_norm}, step=self.global_step)
+                    if self.global_step % self.args.save_steps == 0:
+                        self.save_checkpoint()
 
         self.accelerator.end_training()
 
@@ -145,37 +167,53 @@ def get_redpajama_v2():
                         streaming=True,
                         ), "raw_content"
 
-def get_ds():
-    return get_redpajama_v2()
+
+def get_ds(dispatch_batches):
+    """
+    this is a janky workaround so it doesn't connect to the dataset server unnecessarily
+    when using dispatch_batches
+    """
+    if state.is_main_process or not dispatch_batches:
+        return get_redpajama_v2()
+    else:
+        with tempfile.NamedTemporaryFile(mode="w+", delete=True) as f:
+            f.write("text\n")
+            f.write("lorem ipsum dolor sit amet\n")
+            # f.writelines(["text", "lorem ipsum dolor sit amet"])
+            f.seek(0)
+            return load_dataset("csv", data_files={"train": f.name}, split="train"), "text"
 
     # load_dataset("cerebras/SlimPajama-627B", split="train", streaming=True)
 
 
 def main():
-    state = PartialState()
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
-    config = tiny()
+    config = small()
+    dispatch_batches = True
 
-    ds, text_field = get_ds()
+    ds, text_field = get_ds(dispatch_batches)
+
     args = TrainingArguments(
-        gradient_accumulation_steps=16,
+        gradient_accumulation_steps=8,
         max_steps_per_epoch=None,
-        log_steps=10,
+        log_steps=1,
+        adam_epsilon=0.00001,
         output_dir="./out",
         weight_decay=0.1,
         warmup_steps=1000,
-        per_gpu_train_batch_size=24,
+        per_gpu_train_batch_size=10,
         save_steps=1000,
         max_sequence_length=config.max_position_embeddings,
-        learning_rate=1e-3,
+        learning_rate=1e-4,
         vocab_size=config.vocab_size,
+        n_gpu=state.num_processes,
     )
     os.makedirs(args.output_dir, exist_ok=True)
 
     model = CausalLM(config)
-    model = model.to(device_get_cuda())
+    # model = model.to(device_get_cuda())
     # tokenizer = AutoTokenizer.from_pretrained("databricks/dbrx-base")
     tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-v0.1")
     if not tokenizer.pad_token_id:
@@ -198,7 +236,7 @@ def main():
             ds_wrapper_partial,
             max_tokens=args.max_sequence_length,
             batch_size=args.per_gpu_train_batch_size,
-            buffer_size=10_000,
+            buffer_size=100_000,
         )
         # https://discuss.huggingface.co/t/how-to-use-huggingface-trainer-streaming-datasets-without-wrapping-it-with-torchdatas-iterablewrapper/25230
         train_dataset = train_dataset.with_format("torch")
@@ -208,7 +246,9 @@ def main():
     accelerator = Accelerator(
         # mixed_precision="bf16",
         log_with=["wandb", "tensorboard"],
+        project_dir="./runs",
         gradient_accumulation_steps=args.gradient_accumulation_steps,
+        dispatch_batches=dispatch_batches,
         # kwargs_handlers=[ddp_kwargs],
     )
 
@@ -216,11 +256,11 @@ def main():
         batch_size=args.per_gpu_train_batch_size,
         num_workers=1,
         pin_memory=True,
-        prefetch_factor=8,
+        prefetch_factor=1_000,
         drop_last=True,
         collate_fn=DataCollatorForSeq2Seq(tokenizer=tokenizer, max_length=True),
     )
-    dataloader = QueuedDataLoader(train_dataset, queue_len=10_000, **dataloader_params)
+    dataloader = DataLoader(train_dataset, **dataloader_params)
 
     trainer = Trainer(model, args, dataloader, accelerator, activation_checkpointing=True)
     if state.is_main_process:
