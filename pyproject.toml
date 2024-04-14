@@ -13,6 +13,7 @@ dependencies = [
     "flash-attn",
     "numba",
     "numpy",
+    "safetensors,
     "wandb",
     "tqdm",
     "transformers==4.39.3",

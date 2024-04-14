@@ -5,8 +5,9 @@ from typing import Optional
 
 import torch
 import wandb
-from accelerate import Accelerator, PartialState
+from accelerate import Accelerator, PartialState, DistributedDataParallelKwargs
 from datasets import load_dataset
+from safetensors.torch import save_model
 from schedulefree import AdamWScheduleFree
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -72,6 +73,7 @@ class Trainer:
 
     def save_checkpoint(self):
         output_dir = self.args.output_dir if self.args.output_dir is not None else "."
+        save_model(self._model, os.path.join(output_dir, f"model_{self.global_step}.safetensors"))
         torch.save(
             self._model.state_dict(),
             os.path.join(output_dir, f"model_{self.global_step}.pt"),
@@ -193,12 +195,20 @@ def main():
         # https://discuss.huggingface.co/t/how-to-use-huggingface-trainer-streaming-datasets-without-wrapping-it-with-torchdatas-iterablewrapper/25230
         train_dataset = train_dataset.with_format("torch")
 
-    accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps)
+    # ddp kwargs with find_unused_parameters needed for triton rmsnorm
+    # ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    accelerator = Accelerator(
+        mixed_precision="bf16",
+        log_with="wandb",
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        # kwargs_handlers=[ddp_kwargs],
+    )
 
     dataloader_params = dict(
         batch_size=args.per_gpu_train_batch_size,
         num_workers=8,
         pin_memory=True,
+        prefetch_factor=4,
         drop_last=True,
         collate_fn=DataCollatorForSeq2Seq(tokenizer=tokenizer, max_length=True),
     )

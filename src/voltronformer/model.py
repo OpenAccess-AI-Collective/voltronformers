@@ -11,7 +11,7 @@ from torch.utils.checkpoint import checkpoint
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
 from .mod import MoDBlock
-
+from .kernels.rms_norm import RMSNorm
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
@@ -65,21 +65,6 @@ class Attention(nn.Module):
         super().__init__()
         self.hidden_size = hidden_size
         self.num_heads = num_heads
-
-
-class RMSNorm(nn.Module):
-    """copied from torchtune"""
-    def __init__(self, dim: int, eps: float = 1e-6) -> None:
-        super().__init__()
-        self.eps = eps
-        self.scale = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_fp32 = x.float()
-        x_normed = (
-                x_fp32 * torch.rsqrt(x_fp32.pow(2).mean(-1, keepdim=True) + self.eps)
-        ).type_as(x)
-        return x_normed * self.scale
 
 
 def mlp(dim: int, hidden_dim: int) -> FeedForward:
