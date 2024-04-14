@@ -11,7 +11,10 @@ from torch.utils.checkpoint import checkpoint
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
 from .mod import MoDBlock
-from .kernels.rms_norm import RMSNorm
+try:
+    from apex.normalization import FusedRMSNorm as RMSNorm
+except ImportError:
+    from .kernels.rms_norm import RMSNorm
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""

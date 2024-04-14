@@ -215,7 +215,8 @@ def main():
     dataloader = DataLoader(train_dataset, **dataloader_params)
 
     trainer = Trainer(model, args, dataloader, accelerator, activation_checkpointing=True)
-    print(f"Total number of parameters: {trainer.model_num_parameters:_}")
+    if state.is_main_process:
+        print(f"Total number of parameters: {trainer.model_num_parameters:_}")
     trainer.train()
 
 

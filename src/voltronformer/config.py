@@ -23,6 +23,7 @@ def tiny():
 
 
 def small():
+    """300M parameters"""
     return DictDefault({
         "hidden_size": 1024,
         "intermediate_size": 2816,
