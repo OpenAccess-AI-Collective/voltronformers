@@ -15,7 +15,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer, DataCollatorForSeq2Seq
 from transformers.trainer_pt_utils import distributed_concat
 
-from src.voltronformer.config import tiny, small
+from src.voltronformer.config import teeny, tiny, small
 from src.voltronformer.model import CausalLM, TransformerDecoderBlock
 from src.voltronformer.train.data import wrap_pretraining_dataset, QueuedDataLoader
 from src.voltronformer.utils import device_get_cuda, device_get_local_rank, set_activation_checkpointing
@@ -146,7 +146,10 @@ class Trainer:
                         if self.rank == 0:
                             pbar.set_description(f"Loss: {tr_loss_scalar} Global Step: {self.global_step} gradient_norm: {grad_norm}")
                             print(f"Loss: {tr_loss_scalar} Global Step: {self.global_step} gradient_norm: {grad_norm}")
-                            wandb.log({"training_loss": tr_loss_scalar, "gradient_norm": grad_norm, "global_step": self.global_step}, step=self.global_step)
+                            try:
+                                wandb.log({"training_loss": tr_loss_scalar, "gradient_norm": grad_norm, "global_step": self.global_step}, step=self.global_step)
+                            except:
+                                pass
                         self.accelerator.log({"training_loss": tr_loss_scalar, "gradient_norm": grad_norm}, step=self.global_step)
                     if self.global_step % self.args.save_steps == 0:
                         self.save_checkpoint()
@@ -164,6 +167,7 @@ def get_redpajama_v2():
                         snapshots=["2023-14"],
                         languages=["en"],
                         split="train",
+                        trust_remote_code=True,
                         streaming=True,
                         ), "raw_content"
 
@@ -236,7 +240,7 @@ def main():
             ds_wrapper_partial,
             max_tokens=args.max_sequence_length,
             batch_size=args.per_gpu_train_batch_size,
-            buffer_size=100_000,
+            buffer_size=40_000,
         )
         # https://discuss.huggingface.co/t/how-to-use-huggingface-trainer-streaming-datasets-without-wrapping-it-with-torchdatas-iterablewrapper/25230
         train_dataset = train_dataset.with_format("torch")
