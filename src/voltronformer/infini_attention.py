@@ -42,7 +42,7 @@ class CompressiveMemory(nn.Module):
         self.betas = nn.Parameter(torch.randn(1, num_heads, 1, dim_value))
 
         # Projection for output
-        self.proj_out = nn.Linear(num_heads * dim_value, dim_input, bias=False)
+        self.proj_out = Linear(num_heads * dim_value, dim_input, bias=False)
 
     def forward(self, x: torch.Tensor, position_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
@@ -58,14 +58,14 @@ class CompressiveMemory(nn.Module):
         n_seq, rem = divmod(seq_len, self.segment_len)
 
         if rem != 0:
-            raise ValueError("Sequence length must be divisible by segment length.")
+            raise ValueError(f"Sequence length must be divisible by segment length. seq_len: {seq_len} segment_len: {self.segment_len}")
 
         out = []
 
         # Initialize mem and normalization
         # !!! Initialization was never specified in the paper, so this is an educated guess
-        mem = torch.zeros(1, self.num_heads, self.dim_key, self.dim_value)
-        z = torch.zeros(1, self.num_heads, self.dim_value, 1).repeat(batch_size, 1, 1, 1)
+        mem = torch.zeros(1, self.num_heads, self.dim_key, self.dim_value).to(device=x.device)
+        z = torch.zeros(1, self.num_heads, self.dim_value, 1).repeat(batch_size, 1, 1, 1).to(device=x.device)
 
         for ix in range(n_seq):
             ix_lo = ix * self.segment_len

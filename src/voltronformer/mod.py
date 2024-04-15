@@ -9,7 +9,7 @@ class MoDBlock(nn.Module):
     def __init__(self, config, block_class):
         super().__init__()
         self.config = config
-        self.block = block_class(config)
+        self.block = block_class(config, is_mod_wrapped=True)
         self.router = nn.Linear(config.hidden_size, 1, bias=False)
         self.capacity_factor = config.mod_capacity_factor
         self.top_k =int(self.capacity_factor * config.max_position_embeddings)
