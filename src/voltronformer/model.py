@@ -271,7 +271,7 @@ class TransformerDecoderBlock(nn.Module):
         super().__init__()
         if config.infini_attention:
             if is_mod_wrapped:
-                seq_len = min(config.ia_segment_len, config.max_position_embeddings * config.mod_capacity_factor)
+                seq_len = min(config.ia_segment_len, int(config.max_position_embeddings * config.mod_capacity_factor))
             else:
                 seq_len = config.ia_segment_len
             self.attn = InfiniAttention(
@@ -280,7 +280,7 @@ class TransformerDecoderBlock(nn.Module):
                 config.num_key_value_heads,
                 config.num_attention_heads,
                 seq_len,
-                update="delta",
+                update="linear",
             )
         else:
             self.attn = LlamaBitMGQA(

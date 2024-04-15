@@ -282,7 +282,8 @@ def main():
                     module.to(torch.float32)
             elif "_proj" in name:
                 # module.to(torch.uint8)
-                module.weight.to(torch.float8_e4m3fn)
+                # module.weight.to(torch.float8_e4m3fn)
+                pass
 
     trainer = Trainer(model, args, dataloader, accelerator, activation_checkpointing=True)
     if state.is_main_process:

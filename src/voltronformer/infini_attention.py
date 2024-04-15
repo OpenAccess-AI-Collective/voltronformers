@@ -10,7 +10,7 @@ from .core import Linear
 
 class CompressiveMemory(nn.Module):
     """Implements the Compressive Transformer memory module."""
-    def __init__(self, dim_input: int, dim_key: int, dim_value: int, num_heads: int, segment_len: int, update: str = "delta"):
+    def __init__(self, dim_input: int, dim_key: int, dim_value: int, num_heads: int, segment_len: int, update: str = "linear"):
         """Initialize module.
 
         Args:

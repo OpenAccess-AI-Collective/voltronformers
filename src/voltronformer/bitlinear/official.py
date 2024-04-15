@@ -1,4 +1,4 @@
-import math
+"""Official implementation of the quantized bit-linear"""
 import torch
 from torch import nn
 
@@ -23,15 +23,17 @@ def activation_quant(x, num_bits=8):
 class BitLinear(nn.Linear):
 
     def __init__(self,
-                 *kargs,
+                 *args,
+                 eps=1e-5,
                  weight_bits=1,
                  input_bits=8,
                  **kwargs
                  ):
-        super(BitLinear, self).__init__(*kargs, **kwargs)
+        super(BitLinear, self).__init__(*args, **kwargs)
         """
         RMSNorm is placed outside BitLinear
         """
+        self.eps = eps
         self.weight_bits = weight_bits
         self.input_bits = input_bits
 
