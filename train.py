@@ -40,6 +40,7 @@ class TrainingArguments:
     max_grad_norm: Optional[float] = 1.0
     n_gpu: Optional[int] = None
     bf16: Optional[bool] = False
+    adam_betas: tuple = (0.9, 0.95)
 
 
 class Trainer:
@@ -57,8 +58,15 @@ class Trainer:
         self.device = device_get_cuda()
         self.global_step = 0
         self.rank = device_get_local_rank()
+
         if accelerator.is_main_process:
-            wandb.init(project="voltronformer")
+            report_config = self.args.__dict__
+            report_config["model_num_parameters"] = self.model_num_parameters
+
+            wandb.init(
+                project="voltronformer",
+                config=report_config,
+            )
         self.accelerator = accelerator
 
     @property
@@ -71,7 +79,7 @@ class Trainer:
         return all_param
 
     def build_optimizer_and_scheduler(self):
-        self.optimizer = AdamWScheduleFree(self._model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay, warmup_steps=self.args.weight_decay, eps=self.args.adam_epsilon)
+        self.optimizer = AdamWScheduleFree(self._model.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay, warmup_steps=self.args.weight_decay, eps=self.args.adam_epsilon, betas=self.args.adam_betas)
         self.lr_scheduler = None
 
     def _loss_fn(self, logits, labels):
@@ -140,6 +148,8 @@ class Trainer:
                         tr_loss_scalar = tr_loss.mean().item()
                     tr_loss -= tr_loss
 
+                    perplexity = torch.exp(tr_loss_scalar)
+
                     self.global_step += 1
 
                     if self.global_step % self.args.log_steps == 0:
@@ -148,12 +158,18 @@ class Trainer:
                             pbar.set_description(f"Loss: {tr_loss_scalar} Global Step: {self.global_step} gradient_norm: {grad_norm}")
                             print(f"Loss: {tr_loss_scalar} Global Step: {self.global_step} gradient_norm: {grad_norm}")
                             try:
-                                wandb.log({"training_loss": tr_loss_scalar, "gradient_norm": grad_norm, "global_step": self.global_step}, step=self.global_step)
+                                wandb.log({
+                                    "training_loss": tr_loss_scalar,
+                                    "gradient_norm": grad_norm,
+                                    "global_step": self.global_step,
+                                    "perplexity": perplexity,
+                                }, step=self.global_step)
                             except:
                                 pass
                         self.accelerator.log({"training_loss": tr_loss_scalar, "gradient_norm": grad_norm}, step=self.global_step)
                     if self.global_step % self.args.save_steps == 0:
                         self.save_checkpoint()
+                    # TODO Freeze DWA after ~5K-10K steps
 
         self.accelerator.end_training()
 
@@ -247,8 +263,11 @@ def main():
         # https://discuss.huggingface.co/t/how-to-use-huggingface-trainer-streaming-datasets-without-wrapping-it-with-torchdatas-iterablewrapper/25230
         train_dataset = train_dataset.with_format("torch")
 
-    # ddp kwargs with find_unused_parameters needed for triton rmsnorm
+    kwargs_handlers =[]
+    # ddp kwargs with find_unused_parameters needed for RMSNormTriton
     # ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    # kwargs_handlers.append(ddp_kwargs)
+
     accelerator_kwargs = {}
     if args.bf16:
         accelerator_kwargs["mixed_precision"] = "bf16"
@@ -257,7 +276,7 @@ def main():
         project_dir="./runs",
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         dispatch_batches=dispatch_batches,
-        # kwargs_handlers=[ddp_kwargs],
+        kwargs_handlers=kwargs_handlers,
         **accelerator_kwargs,
     )
 

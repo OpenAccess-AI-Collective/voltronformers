@@ -276,8 +276,8 @@ class TransformerDecoderBlock(nn.Module):
                 seq_len = config.ia_segment_len
             self.attn = InfiniAttention(
                 config.hidden_size,
-                config.num_key_value_heads,
-                config.num_key_value_heads,
+                config.ia_dim_key,
+                config.ia_dim_value,
                 config.num_attention_heads,
                 seq_len,
                 update="linear",

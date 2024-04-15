@@ -20,7 +20,9 @@ def teeny():
         "rms_norm_eps": 0.000001,
         "dwa": True,
         "infini_attention": True,
-        "ia_segment_len": 512  # needs to be evenly divide max_position_embeddings * mod_capacity_factor
+        "ia_segment_len": 512,  # needs to be evenly divide max_position_embeddings * mod_capacity_factor
+        "ia_dim_key": 64,
+        "ia_dim_value": 64,
     })
 
 
