@@ -3,12 +3,11 @@ import torch
 from torch import nn
 
 
-def weight_quant(weight, num_bits=1):
-    dtype = weight.dtype
-    weight = weight.float()
+def weight_quant(weight, dtype=torch.float16):
+    weight = weight.bfloat16()
     s =  1 / weight.abs().mean().clamp(min=1e-5)
     result = (weight * s).round().clamp(-1, 1) / s
-    return result.type(dtype)
+    return result.to(dtype=dtype)
 
 
 def activation_quant(x, num_bits=8):
@@ -37,9 +36,12 @@ class BitLinear(nn.Linear):
         self.input_bits = input_bits
 
     def forward(self, input):
-
         quant_input = input + (activation_quant(input, self.input_bits) - input).detach()
-        quant_weight = self.weight + (weight_quant(self.weight, self.weight_bits) - self.weight).detach()
+        # Convert the uint8 weights to the input data type
+        fp_weight = self.weight.to(input.dtype)
+
+        # seems silly, but this is done for the cuda graph's sake
+        quant_weight = fp_weight + (weight_quant(self.weight, dtype=input.dtype) - fp_weight).detach()
 
         out = nn.functional.linear(quant_input, quant_weight)
         if not self.bias is None:

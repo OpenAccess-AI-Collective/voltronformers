@@ -39,6 +39,7 @@ class TrainingArguments:
     vocab_size: Optional[int] = None
     max_grad_norm: Optional[float] = 1.0
     n_gpu: Optional[int] = None
+    bf16: Optional[bool] = False
 
 
 class Trainer:
@@ -213,6 +214,7 @@ def main():
         learning_rate=1e-4,
         vocab_size=config.vocab_size,
         n_gpu=state.num_processes,
+        bf16=True,
     )
     os.makedirs(args.output_dir, exist_ok=True)
 
@@ -247,24 +249,41 @@ def main():
 
     # ddp kwargs with find_unused_parameters needed for triton rmsnorm
     # ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
+    accelerator_kwargs = {}
+    if args.bf16:
+        accelerator_kwargs["mixed_precision"] = "bf16"
     accelerator = Accelerator(
-        # mixed_precision="bf16",
+        mixed_precision="bf16",
         log_with=["wandb", "tensorboard"],
         project_dir="./runs",
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         dispatch_batches=dispatch_batches,
         # kwargs_handlers=[ddp_kwargs],
+        **accelerator_kwargs,
     )
 
     dataloader_params = dict(
         batch_size=args.per_gpu_train_batch_size,
         num_workers=1,
         pin_memory=True,
-        prefetch_factor=1_000,
+        prefetch_factor=2_000,
         drop_last=True,
         collate_fn=DataCollatorForSeq2Seq(tokenizer=tokenizer, max_length=True),
     )
     dataloader = DataLoader(train_dataset, **dataloader_params)
+
+    ### float32 casting for improved accuracy
+    if args.bf16:
+        model = model.to(dtype=torch.bfloat16)
+        for name, module in model.named_modules():
+            if "layernorm" in name or name == "ln_f":
+                module.to(torch.float32)
+            elif any(m in name for m in ["wte", "embed_out"]):
+                if hasattr(module, "weight"):
+                    module.to(torch.float32)
+            elif "_proj" in name:
+                # module.to(torch.uint8)
+                module.weight.to(torch.float8_e4m3fn)
 
     trainer = Trainer(model, args, dataloader, accelerator, activation_checkpointing=True)
     if state.is_main_process:
