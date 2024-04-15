@@ -195,7 +195,7 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
-    config = small()
+    config = teeny()
     dispatch_batches = True
 
     ds, text_field = get_ds(dispatch_batches)
@@ -253,7 +253,6 @@ def main():
     if args.bf16:
         accelerator_kwargs["mixed_precision"] = "bf16"
     accelerator = Accelerator(
-        mixed_precision="bf16",
         log_with=["wandb", "tensorboard"],
         project_dir="./runs",
         gradient_accumulation_steps=args.gradient_accumulation_steps,

@@ -270,13 +270,12 @@ class TransformerDecoderBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
         if config.infini_attention:
-            SEGMENT_LEN = 2048
             self.attn = InfiniAttention(
                 config.hidden_size,
                 config.num_key_value_heads,
                 config.num_key_value_heads,
                 config.num_attention_heads,
-                SEGMENT_LEN,
+                config.ia_segment_len,
                 update="delta",
             )
         else:
