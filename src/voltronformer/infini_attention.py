@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from torch import nn
 
@@ -42,7 +44,7 @@ class CompressiveMemory(nn.Module):
         # Projection for output
         self.proj_out = nn.Linear(num_heads * dim_value, dim_input, bias=False)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, position_ids: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Applies Scaled Dot-Product Attention to the input tensor.
 
