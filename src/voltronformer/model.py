@@ -11,6 +11,8 @@ from torch.utils.checkpoint import checkpoint
 from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
 
 from .mod import MoDBlock
+from .infini_attention import CompressiveMemory as InfiniAttention
+
 try:
     from apex.normalization import FusedRMSNorm as RMSNorm
 except ImportError:
@@ -61,13 +63,6 @@ class FeedForward(nn.Module):
         # FIXME layernorm???
         x = self.down_proj(x)
         return x
-
-
-class Attention(nn.Module):
-    def __init__(self, hidden_size: int, num_heads: int):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.num_heads = num_heads
 
 
 def mlp(dim: int, hidden_dim: int) -> FeedForward:
@@ -274,7 +269,27 @@ class TransformerDecoderBlock(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.attn = LlamaBitMGQA(config.hidden_size, config.num_attention_heads, config.num_key_value_heads, max_position_embeddings=config.max_position_embeddings, rope_theta=config.rope_theta, bias=False, layer_norm=False)
+        if config.infini_attention:
+            SEGMENT_LEN = 2048
+            self.attn = InfiniAttention(
+                config.hidden_size,
+                config.num_key_value_heads,
+                config.num_key_value_heads,
+                config.num_attention_heads,
+                SEGMENT_LEN,
+                update="delta",
+            )
+        else:
+            self.attn = LlamaBitMGQA(
+                config.hidden_size,
+                config.num_attention_heads,
+                config.num_key_value_heads,
+                max_position_embeddings=config.max_position_embeddings,
+                rope_theta=config.rope_theta,
+                bias=False,
+                layer_norm=False,
+            )
+
         self.mlp = mlp(config.hidden_size, config.intermediate_size)
         self.input_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = RMSNorm(config.hidden_size, eps=config.rms_norm_eps)

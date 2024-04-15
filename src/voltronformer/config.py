@@ -19,6 +19,7 @@ def teeny():
         "mod_capacity_factor": 0.125,
         "rms_norm_eps": 0.000001,
         "dwa": True,
+        "infini_attention": True,
     })
 
 
@@ -40,6 +41,7 @@ def tiny():
         "mod_capacity_factor": 0.125,
         "rms_norm_eps": 0.000001,
         "dwa": True,
+        "infini_attention": False,
     })
 
 
@@ -61,4 +63,5 @@ def small():
         "mod_capacity_factor": 0.125,
         "rms_norm_eps": 0.000001,
         "dwa": True,
+        "infini_attention": False,
     })
