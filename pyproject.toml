@@ -1,0 +1,36 @@
+[project]
+name = "voltronformers"
+dynamic = ["version"]
+requires-python = ">= 3.10"
+dependencies = [
+    "accelerate",
+    "addict",
+    "bitnet",
+    "schedulefree",
+    "bitsandbytes",
+    "datasets",
+    "einops",
+    "flash-attn",
+    "mosaicml-streaming",
+    "numba",
+    "numpy",
+    "safetensors",
+    "wandb",
+    "tqdm",
+    "transformers==4.39.3",
+    "zstandard",
+    "denseformer @ git+https://github.com/epfml/DenseFormer.git@main",
+]
+maintainers = [
+    {name="Wing Lian", email="wing.lian@gmail.com"},
+]
+description = "voltronformers: Assembling the best SotA AI techniques into a unified model"
+
+[project.optional-dependencies]
+dev = [
+    "tox",
+    "pre-commit",
+    "black",
+    "mypy",
+    "pytest",
+]
