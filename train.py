@@ -1,4 +1,5 @@
 import functools
+import math
 import os
 import tempfile
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ class TrainingArguments:
     gradient_accumulation_steps: int = 1
     max_steps_per_epoch: Optional[int] = None
     log_steps: int = 1
+    adam_betas: tuple = (0.9, 0.95)
     adam_epsilon: Optional[float] = 1e-8
     output_dir: Optional[str] = None
     weight_decay: float = 0.0
@@ -40,7 +42,6 @@ class TrainingArguments:
     max_grad_norm: Optional[float] = 1.0
     n_gpu: Optional[int] = None
     bf16: Optional[bool] = False
-    adam_betas: tuple = (0.9, 0.95)
 
 
 class Trainer:
@@ -148,7 +149,7 @@ class Trainer:
                         tr_loss_scalar = tr_loss.mean().item()
                     tr_loss -= tr_loss
 
-                    perplexity = torch.exp(tr_loss_scalar)
+                    perplexity = math.exp(tr_loss_scalar)
 
                     self.global_step += 1
 

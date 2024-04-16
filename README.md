@@ -9,6 +9,18 @@ Assembling the best SotA AI techniques into a unified model
 
 https://twitter.com/winglian/status/1778675583817326842
 
+## Easy Start
+
+Use the official Nividia/Pytorch docker container @ `nvcr.io/nvidia/pytorch:24.03-py3`
+
+```bash
+git clone https://github.com/OpenAccess-AI-Collective/voltronformers.git
+cd voltronformers
+pip install -e .
+accelerate launch train.py
+```
+
+
 # References
 
 ## BitNet
